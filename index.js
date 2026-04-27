@@ -2,7 +2,6 @@ const express = require('express');
 const admin = require('firebase-admin');
 const app = express();
 
-// Парсим JSON из переменной окружения
 const serviceAccount = JSON.parse(process.env.FIREBASE_JSON);
 
 admin.initializeApp({
@@ -12,20 +11,18 @@ admin.initializeApp({
 const db = admin.firestore();
 console.log('✅ Firebase инициализирован');
 
-// Эндпоинт для проверки
-app.get('/', (req, res) => {
-  res.send('Сервер работает!');
-});
-
-// Прослушиваем новые сообщения
+// ПРОВЕРКА: слушаем ВСЕ коллекции messages
 db.collectionGroup('messages').onSnapshot((snapshot) => {
+  console.log('🔔 Слушатель сработал! Новых сообщений:', snapshot.docChanges().length);
+  
   snapshot.docChanges().forEach(async (change) => {
     if (change.type === 'added') {
       const message = change.doc.data();
-      console.log('📩 Новое сообщение:', message.text);
+      console.log('📩 НОВОЕ СООБЩЕНИЕ:', message.text);
       
       try {
-        const userDoc = await db.collection('users').doc(message.receiverId).get();
+        const userRef = db.collection('users').doc(message.receiverId);
+        const userDoc = await userRef.get();
         const fcmToken = userDoc.data()?.fcmToken;
         
         if (fcmToken) {
@@ -39,8 +36,8 @@ db.collectionGroup('messages').onSnapshot((snapshot) => {
             token: fcmToken
           };
           
-          const response = await admin.messaging().send(payload);
-          console.log('✅ Уведомление отправлено:', response);
+          await admin.messaging().send(payload);
+          console.log('✅ Уведомление отправлено!');
         } else {
           console.log('❌ Нет токена у получателя');
         }
@@ -51,5 +48,5 @@ db.collectionGroup('messages').onSnapshot((snapshot) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Запущен на порту ${PORT}`));
+app.get('/', (req, res) => res.send('Сервер работает!'));
+app.listen(3000, () => console.log('🚀 Запущен на порту 3000'));
