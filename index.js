@@ -24,14 +24,12 @@ db.collectionGroup('messages').onSnapshot(async (snapshot) => {
         continue;
       }
       
-      // Проверяем, не в чате ли получатель
       const receiverDoc = await db.collection('users').doc(message.receiverId).get();
       const currentChatId = receiverDoc.data()?.currentChatId;
       const chatId = change.doc.ref.parent.parent.id;
       
-      // НЕ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ, ЕСЛИ ПОЛУЧАТЕЛЬ УЖЕ В ЭТОМ ЧАТЕ
       if (currentChatId === chatId) {
-        console.log('⏸️ Получатель уже в чате, уведомление не отправлено');
+        console.log('⏸️ Получатель уже в чате');
         continue;
       }
       
