@@ -11,20 +11,10 @@ admin.initializeApp({
 const db = admin.firestore();
 console.log('✅ Firebase инициализирован');
 
-// Хранилище статусов "в чате" (временное)
-const userInChat = {};
-
 // Слушаем изменения статуса пользователей (кто в каком чате)
 db.collection('users').onSnapshot((snapshot) => {
-  snapshot.docChanges().forEach((change) => {
-    const userData = change.doc.data();
-    const userId = change.doc.id;
-    if (userData.currentChatId) {
-      userInChat[userId] = userData.currentChatId;
-    } else {
-      delete userInChat[userId];
-    }
-  });
+  // Ничего не храним, просто логируем
+  console.log('👥 Обновление статусов пользователей');
 });
 
 db.collectionGroup('messages').onSnapshot(async (snapshot) => {
@@ -35,22 +25,24 @@ db.collectionGroup('messages').onSnapshot(async (snapshot) => {
       const message = change.doc.data();
       console.log('📩 НОВОЕ СООБЩЕНИЕ:', message.text);
       
-      // НЕ ОТПРАВЛЯЕМ, ЕСЛИ ПОЛЬЗОВАТЕЛЬ В ЭТОМ ЖЕ ЧАТЕ
-      if (userInChat[message.receiverId] === change.doc.ref.parent.parent.id) {
-        console.log('⏸️ Пользователь в чате, уведомление не отправлено');
-        return;
-      }
-      
       // НЕ ОТПРАВЛЯЕМ САМОМУ СЕБЕ
       if (message.senderId === message.receiverId) {
         console.log('⏸️ Сообщение самому себе, пропускаем');
         return;
       }
       
+      // ПРОВЕРЯЕМ, НЕ В ЧАТЕ ЛИ ПОЛУЧАТЕЛЬ
+      const receiverDoc = await db.collection('users').doc(message.receiverId).get();
+      const currentChatId = receiverDoc.data()?.currentChatId;
+      const chatId = change.doc.ref.parent.parent.id;
+      
+      if (currentChatId === chatId) {
+        console.log('⏸️ Получатель уже в этом чате, уведомление не отправлено');
+        return;
+      }
+      
       try {
-        const userRef = db.collection('users').doc(message.receiverId);
-        const userDoc = await userRef.get();
-        const fcmToken = userDoc.data()?.fcmToken;
+        const fcmToken = receiverDoc.data()?.fcmToken;
         
         if (!fcmToken) {
           console.log('❌ Нет токена у получателя');
@@ -67,7 +59,7 @@ db.collectionGroup('messages').onSnapshot(async (snapshot) => {
             senderName: senderName,
             message: message.text,
             senderId: message.senderId,
-            chatId: change.doc.ref.parent.parent.id
+            chatId: chatId
           },
           token: fcmToken
         };
