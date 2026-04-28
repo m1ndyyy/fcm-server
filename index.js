@@ -12,48 +12,55 @@ const db = admin.firestore();
 console.log('✅ Firebase инициализирован');
 
 db.collectionGroup('messages').onSnapshot(async (snapshot) => {
-  console.log('🔔 Новых сообщений:', snapshot.docChanges().length);
-  
   for (const change of snapshot.docChanges()) {
     if (change.type === 'added') {
       const message = change.doc.data();
-      console.log('📩 НОВОЕ СООБЩЕНИЕ:', message.text);
+      console.log('📩 Новое сообщение:', message.text);
       
+      // Не отправляем себе
       if (message.senderId === message.receiverId) {
-        console.log('⏸️ Сообщение самому себе');
+        console.log('⏸️ Себе');
         continue;
       }
       
-      const receiverDoc = await db.collection('users').doc(message.receiverId).get();
-      const currentChatId = receiverDoc.data()?.currentChatId;
-      const chatId = change.doc.ref.parent.parent.id;
-      
-      if (currentChatId === chatId) {
-        console.log('⏸️ Получатель уже в чате');
-        continue;
+      try {
+        const receiverDoc = await db.collection('users').doc(message.receiverId).get();
+        const currentChatId = receiverDoc.data()?.currentChatId;
+        const chatId = change.doc.ref.parent.parent.id;
+        
+        // Не отправляем, если в чате
+        if (currentChatId === chatId) {
+          console.log('⏸️ Получатель в чате');
+          continue;
+        }
+        
+        const fcmToken = receiverDoc.data()?.fcmToken;
+        
+        // ВАЖНО: проверяем, есть ли токен
+        if (!fcmToken || fcmToken === '') {
+          console.log('❌ Нет токена у получателя:', message.receiverId);
+          continue;
+        }
+        
+        const senderDoc = await db.collection('users').doc(message.senderId).get();
+        const senderName = senderDoc.data()?.name || 'Пользователь';
+        
+        const payload = {
+          data: {
+            senderName: senderName,
+            message: message.text,
+            senderId: message.senderId,
+            chatId: chatId
+          },
+          token: fcmToken
+        };
+        
+        await admin.messaging().send(payload);
+        console.log('✅ Уведомление отправлено!');
+        
+      } catch (err) {
+        console.error('❌ Ошибка:', err.message);
       }
-      
-      const fcmToken = receiverDoc.data()?.fcmToken;
-      if (!fcmToken) {
-        console.log('❌ Нет токена');
-        continue;
-      }
-      
-      const senderDoc = await db.collection('users').doc(message.senderId).get();
-      const senderName = senderDoc.data()?.name || 'Пользователь';
-      
-      const payload = {
-        data: {
-          senderName: senderName,
-          message: message.text,
-          senderId: message.senderId,
-          chatId: chatId
-        },
-        token: fcmToken
-      };
-      
-      await admin.messaging().send(payload);
-      console.log('✅ Уведомление отправлено!');
     }
   }
 });
